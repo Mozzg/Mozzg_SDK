@@ -145,7 +145,7 @@ type
     procedure AddToHashTable(aHashItem: THashBaseItem); virtual; abstract;
     procedure RemoveFromHashTable(aHashItem: THashBaseItem); virtual; abstract;
     procedure SetHashSize(aHashSize: Cardinal); virtual; abstract;
-    procedure DestroyHashTables; virtual; abstract; // Can't raise exception here, because method is called in destructor
+    procedure DestroyHashTables; virtual; abstract;
 
     procedure CheckExtendAndRehash; virtual;
     procedure InternalAddItem(aItem: THashBaseItem);
@@ -591,8 +591,6 @@ begin
         lCurrentChain := lCurrentChain^.NextChainLink;
       end;
     end;
-    //PointerTable := ReallocMemory(Pointer(PointerTable), aNewTableSize * SizeOf(Pointer));
-    //FillChar(PointerTable^, aNewTableSize * SizeOf(Pointer), 0);
     PointerTableSize := aNewTableSize;
     FreeMem(PointerTable);
     PointerTable := AllocMem(aNewTableSize * SizeOf(Pointer));

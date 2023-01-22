@@ -4,13 +4,18 @@ interface
 
 const
   EmptyString = '';
+  PRECISION_TIMER_MINIMUM_RESOLUTION = 1;
+
+  EXCEPTION_MESSAGE_TIMER_NOT_AVAILABLE = 'Error creating %s, high resolution timer is not available';
+  EXCEPTION_MESSAGE_TIMER_NOT_INITIALIZED = 'Error, high precision timer was not initialized';
+  EXCEPTION_MESSAGE_TIMER_WAIT_FAILED = 'Error, failed wait for waitable timer';
 
   EXCEPTION_MESSAGE_LIST_ITEM_ALREADY_OWNED = 'Error, list item is owned by another list';
   EXCEPTION_MESSAGE_LIST_ITEM_ALREADY_OWNED_ADDING = 'Error, list item is already owned when adding to the list';
   EXCEPTION_MESSAGE_LIST_ITEM_NOT_OWNED = 'Error, list item is not owned';
+
   EXCEPTION_MESSAGE_HASH_ITEMS_NOT_FOUND = 'Item with name %s not found';
   EXCEPTION_MESSAGE_HASH_ITEMS_ALREADY_EXISTS = 'Item with name %s already exists';
-
   EXCEPTION_MESSAGE_HASH_ITEMS_COMPARE_MISSING = '%s: Object compare function not found';
 
   EXCEPTION_MESSAGE_STREAM_WRONG_SIZE = 'New stream size is out of bounds';

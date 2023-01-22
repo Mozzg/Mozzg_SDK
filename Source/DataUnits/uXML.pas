@@ -9,8 +9,6 @@ uses
   cuHashTables, cuConsts, cuClasses,
   uStream, uCustomExceptions;
 
-// +++ проверить правильность парсинга XML с двоеточиями в атрибутах и названиях тегов https://www.w3schools.com/xml/xml_namespaces.asp
-
 type
   TXMLNode = class;
   TXMLNodes = class;
@@ -143,6 +141,8 @@ type
     function FindNextByPropertyNameInGeneral(aProperty: TXMLProperty): TXMLProperty;
     {$ENDIF}
 
+    function GetFirstChild: TXMLNode; inline;
+    function GetLastChild: TXMLNode; inline;
     function GetNextTraversal: TXMLNode; inline;
     function GetPrevTraversal: TXMLNode; inline;
     function GetNextSibling: TXMLNode; inline;
@@ -151,20 +151,11 @@ type
 
     function IsParent(aChildNode: TXMLNode): Boolean;
 
-    // +++ потом убрать, методы для тестирования
-    function LogNodes(aNestingCount: Integer = 0): string;
-    function LogNodesAndProps(aNestingCount: Integer = 0): string;
-    function LogNodesAndGeneralProps(aNestingCount: Integer = 0): string;
-    function LogGeneralHashTable: string;
-    function LogGeneralHashTableByValue: string;
-    function CheckGeneralHashTableElementCount: boolean;
-
     property NodeName: string read fNodeName write SetNodeName;
     property NodeTextValue: string read fNodeTextValue write SetNodeTextValue;
     property Parent: TXMLNode read GetParent write SetParent;
     property ImmediateChildren: TXMLNodes read GetImmediateChildren;
     property Properties: TXMLProperties read fNodeProperties;
-    // +++ сделать рехеш объектов при включении опций
     property HashGeneralChildren: Boolean read fHashGeneralChildren write fHashGeneralChildren;
     property HashChildrenProperties: Boolean read fHashChildrenProperties write fHashChildrenProperties;
 
@@ -245,9 +236,6 @@ type
   end;
 
 implementation
-
-// +++ потом убрать
-uses System.StrUtils, WinAPI.Windows;
 
 { TXMLNodeNameNodeTextGeneralItem }
 
@@ -745,8 +733,46 @@ begin
 end;
 
 function TXMLNode.InternalConvertValueToVariant(const aTextValue: string): Variant;
+const
+  DOT_CHAR = '.';
+  COMMA_CHAR = ',';
+var
+  lFormat: TFormatSettings;
+  lDoubleValue: Double;
+  lIntegerValue: Integer;
+  lInt64Value: Int64;
+  lDateTimeValue: TDateTime;
+  lBooleanValue: Boolean;
 begin
-  // +++ сделать проверку на разные типы данных
+  lFormat := TFormatSettings.Create;
+
+  // Check for double value
+  if (Pos(DOT_CHAR, aTextValue) <> 0) or (Pos(COMMA_CHAR, aTextValue) <> 0) then
+    if TryStrToFloat(aTextValue, lDoubleValue, lFormat) then
+      Exit(lDoubleValue);
+
+  // Check for integer value
+  if TryStrToInt(aTextValue, lIntegerValue) then
+    Exit(lIntegerValue);
+
+  if TryStrToInt64(aTextValue, lInt64Value) then
+    Exit(lInt64Value);
+
+  // Check for datetime
+  if TryStrToDate(aTextValue, lDateTimeValue, lFormat) then
+    Exit(lDateTimeValue);
+
+  if TryStrToTime(aTextValue, lDateTimeValue, lFormat) then
+    Exit(lDateTimeValue);
+
+  if TryStrToDateTime(aTextValue, lDateTimeValue, lFormat) then
+    Exit(lDateTimeValue);
+
+  // Check for bool
+  if TryStrToBool(aTextValue, lBooleanValue) then
+    Exit(lBooleanValue);
+
+  // If no checks are passed, we left with string value
   Result := aTextValue;
 end;
 
@@ -797,7 +823,6 @@ procedure TXMLNode.SaveToXMLStream(aStream: TXMLStream; aWriteXMLHeader: Boolean
 var
   lTempStream: TXMLStream;
 begin
-  // +++ проверить на кодировку, где вызывается этот метод
   aStream.Seek(0, soBeginning);
 
   // We must write all data in unicode first
@@ -1093,6 +1118,16 @@ begin
 end;
 {$ENDIF}
 
+function TXMLNode.GetFirstChild: TXMLNode;
+begin
+  Result := Self.ImmediateChildren.GetFirst;
+end;
+
+function TXMLNode.GetLastChild: TXMLNode;
+begin
+  Result := Self.ImmediateChildren.GetLast;
+end;
+
 function TXMLNode.GetNextTraversal: TXMLNode;
 begin
   if (fImmediateChildren <> nil) and (fImmediateChildren.fFirst <> nil) then
@@ -1125,12 +1160,6 @@ begin
     while Result.fImmediateChildren.fLast <> nil do
       Result := TXMLNode(Result.fImmediateChildren.fLast);
     Exit;
-
-    {repeat
-      LastChild := TAbstractTreeItem(Result.fChildren.fLast);
-      if LastChild = nil then Exit;
-      Result := LastChild;
-    until False;  }
   end;
   Result := fParent;
 end;
@@ -1161,200 +1190,6 @@ begin
       Exit(True);
   end;
   Result := False;
-end;
-
-function TXMLNode.LogNodes(aNestingCount: Integer = 0): string;
-var
-  lNode: TXMLNode;
-begin
-  Result := DupeString('    ', aNestingCount) + fNodeName + '=' + fNodeTextValue;
-  lNode := fImmediateChildren.GetFirst;
-  while lNode <> nil do
-  begin
-    Result := Result + sLineBreak + lNode.LogNodes(aNestingCount + 1);
-    lNode := lNode.GetNextSibling;
-  end;
-  //if GetNextSibling <> nil then
-  //  Result := Result + sLineBreak + GetNextSibling.LogNodes(aNestingCount);
-end;
-
-function TXMLNode.LogNodesAndProps(aNestingCount: Integer = 0): string;
-var
-  lNode: TXMLNode;
-  lProperty: TXMLProperty;
-  lPropertiesStr: string;
-begin
-  lPropertiesStr := EmptyString;
-  lProperty := fNodeProperties.GetFirst;
-  while lProperty <> nil do
-  begin
-    if lPropertiesStr <> EmptyString then
-      lPropertiesStr := lPropertiesStr + ', ';
-    lPropertiesStr := lPropertiesStr + lProperty.Name + '=' + lProperty.AsString;
-    lProperty := lProperty.GetNext;
-  end;
-
-  Result := DupeString('    ', aNestingCount) + fNodeName + '=' + fNodeTextValue;
-  if lPropertiesStr <> EmptyString then
-    Result := Result + ', Properties: ' + lPropertiesStr;
-  lNode := fImmediateChildren.GetFirst;
-  while lNode <> nil do
-  begin
-    Result := Result + sLineBreak + lNode.LogNodesAndProps(aNestingCount + 1);
-    lNode := lNode.GetNextSibling;
-  end;
-end;
-
-function TXMLNode.LogNodesAndGeneralProps(aNestingCount: Integer = 0): string;
-var
-  lNode: TXMLNode;
-  lProperty: TXMLProperty;
-  {$IFNDEF STATIC_CHAINS}
-  lGeneralProperty: TXMLProperty;
-  {$ENDIF}
-  lPropertiesStr: string;
-begin
-  lPropertiesStr := EmptyString;
-  lProperty := fNodeProperties.GetFirst;
-  while lProperty <> nil do
-  begin
-    if lPropertiesStr <> EmptyString then
-      lPropertiesStr := lPropertiesStr + ', ';
-    lPropertiesStr := lPropertiesStr + lProperty.Name + '=' + lProperty.AsString;
-    lProperty := lProperty.GetNext;
-  end;
-
-  Result := DupeString('    ', aNestingCount) + '-' + fNodeName + '=' + fNodeTextValue;
-  if lPropertiesStr <> EmptyString then
-    Result := Result + ', Properties: ' + lPropertiesStr;
-
-  {$IFNDEF STATIC_CHAINS}
-  lPropertiesStr := sLineBreak + DupeString('    ', aNestingCount) + 'GeneralProperties:';
-  lGeneralProperty := fGeneralChildrenProperties.GetFirst;
-  while lGeneralProperty <> nil do
-  begin
-    lPropertiesStr := lPropertiesStr + sLineBreak + DupeString('    ', aNestingCount) + lGeneralProperty.Name + '=' + lGeneralProperty.AsString + ', Node=' + lGeneralProperty.fParentNode.NodeName;
-    lGeneralProperty := lGeneralProperty.GetNext;
-  end;
-  Result := Result + lPropertiesStr;
-  {$ENDIF}
-
-  lNode := fImmediateChildren.GetFirst;
-  while lNode <> nil do
-  begin
-    Result := Result + sLineBreak + lNode.LogNodesAndGeneralProps(aNestingCount + 1);
-    lNode := lNode.GetNextSibling;
-  end;
-end;
-
-function TXMLNode.LogGeneralHashTable: string;
-var
-  lResult: string;
-  {$IFNDEF STATIC_CHAINS}
-  i: Integer;
-  lElementChain: PHashChain;
-  lItem: TXMLNodeNameNodeTextGeneralItem;
-  {$ENDIF}
-
-  procedure AddToResult(const aMess: string);
-  begin
-    lResult := lResult + sLineBreak + aMess;
-  end;
-
-begin
-  lResult := EmptyString;
-  AddToResult('GeneralhashTable:');
-
-  {$IFNDEF STATIC_CHAINS}
-  for i := 0 to fGeneralChildren.fGeneralNamesStringHashTable.HashTableSize - 1 do
-  begin
-    AddToResult('#' + IntToStr(i) + ':');
-    lElementChain := fGeneralChildren.fGeneralNamesStringHashTable.HashTable.PointerTable^[i];
-    if lElementChain = nil then
-      AddToResult('  Chain is nil');
-
-    while lElementChain <> nil do
-    begin
-      lItem := TXMLNodeNameNodeTextGeneralItem(lElementChain.Item);
-      if lItem = nil then
-        AddToResult('  Item is nil (ERROR)')
-      else
-        AddToResult('  Hash=' + IntToHex(lElementChain.HashValue, 8) + ', Parent=' + IntToHex(NativeInt(lItem.fParentNode), 8)
-            + ', ParentNodeName=' + lItem.fParentNode.fNodeName + ', ParentNodeValue=' + lItem.fParentNode.fNodeTextValue);
-
-      lElementChain := lElementChain^.NextChainLink;
-    end;
-  end;
-  {$ENDIF}
-  Result := lResult;
-end;
-
-function TXMLNode.LogGeneralHashTableByValue: string;
-var
-  lResult: string;
-  {$IFNDEF STATIC_CHAINS}
-  i: Integer;
-  lElementChain: PHashChain;
-  lItem: TXMLNodeNameNodeTextGeneralItem;
-  {$ENDIF}
-
-  procedure AddToResult(const aMess: string);
-  begin
-    lResult := lResult + sLineBreak + aMess;
-  end;
-
-begin
-  lResult := EmptyString;
-  AddToResult('GeneralhashTableByValue:');
-
-  {$IFNDEF STATIC_CHAINS}
-  for i := 0 to fGeneralChildren.fGeneralTextValuesStringHashTable.HashTableSize - 1 do
-  begin
-    AddToResult('#' + IntToStr(i) + ':');
-    lElementChain := fGeneralChildren.fGeneralTextValuesStringHashTable.HashTable.PointerTable^[i];
-    if lElementChain = nil then
-      AddToResult('  Chain is nil');
-
-    while lElementChain <> nil do
-    begin
-      lItem := TXMLNodeNameNodeTextGeneralItem(lElementChain.Item);
-      if lItem = nil then
-        AddToResult('  Item is nil (ERROR)')
-      else
-        AddToResult('  Hash=' + IntToHex(lElementChain.HashValue, 8) + ', Parent=' + IntToHex(NativeInt(lItem.fParentNode), 8)
-            + ', ParentNodeName=' + lItem.fParentNode.fNodeName + ', ParentNodeValue=' + lItem.fParentNode.fNodeTextValue
-            + ', ChainAdress=' + IntToHex(NativeInt(lElementChain), SizeOf(Pointer) * 2));
-
-      lElementChain := lElementChain^.NextChainLink;
-    end;
-  end;
-  {$ENDIF}
-  Result := lResult;
-end;
-
-function TXMLNode.CheckGeneralHashTableElementCount: boolean;
-{$IFNDEF STATIC_CHAINS}
-var
-  i: Integer;
-  lCurrentChain: PHashChain;
-  lElementCount: Int64;
-{$ENDIF}
-begin
-  {$IFNDEF STATIC_CHAINS}
-  lElementCount := 0;
-  for i := 0 to fGeneralChildren.fGeneralNamesStringHashTable.HashTableSize - 1 do
-  begin
-    lCurrentChain := fGeneralChildren.fGeneralNamesStringHashTable.HashTable.PointerTable^[i];
-    while lCurrentChain <> nil do
-    begin
-      Inc(lElementCount);
-      lCurrentChain := lCurrentChain^.NextChainLink;
-    end;
-  end;
-
-  Exit(lElementCount = fGeneralChildren.fGeneralNamesStringHashTable.HashTable.PointerTableElementCount);
-  {$ENDIF}
-  Result := True;
 end;
 
 { TXMLNodes }
