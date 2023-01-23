@@ -868,7 +868,7 @@ end;
 function TXMLStream.ReadIdentifier: string;
 const
   START_CHARS: TSysCharSet = ['a'..'z', 'A'..'Z', '_', ':'];
-  IDENTIFIER_CHARS: TSysCharSet = ['a'..'z', 'A'..'Z', '_', ':', '0'..'9'];
+  IDENTIFIER_CHARS: TSysCharSet = ['a'..'z', 'A'..'Z', '_', ':', '.', '0'..'9'];
 var
   lBuilder: TUnicodeStringBuilder;
   lChr: Char;
@@ -892,13 +892,16 @@ begin
   if (lChr <> XML_APOSTROPHE_CHAR) and (lChr <> XML_QUOTATION_CHAR) then
     RaiseInvalidXMLFormat;
   lBuilder.Init(Result);
-  lChr := ReadNextChar;
-  while (lChr <> XML_APOSTROPHE_CHAR) and (lChr <> XML_QUOTATION_CHAR) do
-  begin
-    lBuilder.Add(lChr);
+  try
     lChr := ReadNextChar;
+    while (lChr <> XML_APOSTROPHE_CHAR) and (lChr <> XML_QUOTATION_CHAR) do
+    begin
+      lBuilder.Add(lChr);
+      lChr := ReadNextChar;
+    end;
+  finally
+    lBuilder.Done;
   end;
-  lBuilder.Done;
 end;
 
 procedure TXMLStream.SkipSpaces;
@@ -1176,6 +1179,7 @@ begin
     Move(PByte(PByte(fMemory) + lLeftBorder)^, lBuffer[0], lRangeSize);
     lNearText := TEncoding.Unicode.GetString(TEncoding.Convert(fXMLStreamEncoding, TEncoding.Unicode, lBuffer));
 
+    // +++ исправить параметр NearTextPosition, т.к. после конвертации позиция неправильная
     raise EInvalidFormatXMLException.CreateFmt(EXCEPTION_MESSAGE_XML_INVALID_FORMAT, [fCurrentLineNumber], fCurrentLineNumber, lNearText, fPosition - lLeftBorder + 1);
   end;
 end;

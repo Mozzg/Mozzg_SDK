@@ -583,6 +583,12 @@ begin
       // Check for normal symbol
       if aStream.GetNextChar <> XML_NODE_START_CHAR then
       begin
+        if lNodeValueBuilder.StringLength = 0 then
+        begin
+          aStream.SkipSpaces;
+          if aStream.GetNextChar = XML_NODE_START_CHAR then
+            Continue;
+        end;
         lChr := aStream.ReadNextChar;
         lNodeValueBuilder.Add(lChr);
         Continue;

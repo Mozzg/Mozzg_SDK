@@ -35,6 +35,8 @@ type
 
     procedure Add(const aChar: WideChar); overload;
     procedure Add(const aString: string); overload;
+
+    property StringLength: NativeUInt read fStringLength;
   end;
 
   // Base class for list items
@@ -100,6 +102,7 @@ end;
 procedure TUnicodeStringBuilder.SetWorkingLength(aLength: NativeUInt);
 begin
   SetLength(fStringPointer^, aLength);
+  fFirstCharPointer := Pointer(fStringPointer^);
 end;
 
 procedure TUnicodeStringBuilder.Init(var aString: string; aReservedLength: NativeUInt = 100);
