@@ -20,11 +20,26 @@ type
 
   // Record for strings to minimize memory realocation
   TUnicodeStringBuilder = record
+  private const
+    JSON_COMMA: WideChar = ',';
+    JSON_OPENING_BRACKET: WideChar = '{';
+    JSON_CLOSING_BRACKET: WideChar = '}';
+    JSON_OPENING_ARRAY_BRACKET: WideChar = '[';
+    JSON_CLOSING_ARRAY_BRACKET: WideChar = ']';
+    JSON_DOUBLE_BRACKETS: WideChar = '"';
+    JSON_COLON: WideChar = ':';
+    JSON_ESCAPE_CHAR: WideChar = '\';
   private
     fStringPointer: PString;
     fFirstCharPointer: PWideChar;
     fReservedLength: NativeUInt;
     fStringLength: NativeUInt;
+    fJSONNeedComma: Boolean;
+
+    // +++ посмотреть более быстрые способы IntToStr и других для данного рекорда для добавления числа в виде строки
+
+    procedure JSON_AddValueCommaPrefix; inline;
+    procedure JSON_AddParameterName(const aName: string); inline;
 
     procedure ExtendReservedStringSize(aMinimalExtensionSize: NativeUInt = 1);
     procedure SetWorkingLength(aLength: NativeUInt);
@@ -35,6 +50,18 @@ type
 
     procedure Add(const aChar: WideChar); overload;
     procedure Add(const aString: string); overload;
+    procedure AddInteger(aIntegerValue: Integer); inline;
+
+    procedure JSON_StartArray; inline;
+    procedure JSON_CloseArray; inline;
+    procedure JSON_StartObject; inline;
+    procedure JSON_CloseObject; inline;
+
+    procedure JSON_AddStringParameter(const aName, aValue: string); inline;
+    procedure JSON_AddIntegerParameter(const aName: string; aValue: Integer); inline;
+    procedure JSON_AddEscapedString(const aString: string); inline;
+
+    procedure JSON_AddArrayItemObject; inline;
 
     property StringLength: NativeUInt read fStringLength;
   end;
@@ -88,6 +115,22 @@ implementation
 
 { TStringBuilder }
 
+procedure TUnicodeStringBuilder.JSON_AddValueCommaPrefix;
+begin
+  if fJSONNeedComma then
+    Add(JSON_COMMA);
+  fJSONNeedComma := True;
+end;
+
+procedure TUnicodeStringBuilder.JSON_AddParameterName(const aName: string);
+begin
+  JSON_AddValueCommaPrefix;
+  Add(JSON_DOUBLE_BRACKETS);
+  JSON_AddEscapedString(aName);
+  Add(JSON_DOUBLE_BRACKETS);
+  Add(JSON_COLON);
+end;
+
 procedure TUnicodeStringBuilder.ExtendReservedStringSize(aMinimalExtensionSize: NativeUInt = 1);
 var
   lExtensionSize: NativeUInt;
@@ -111,6 +154,7 @@ begin
   SetLength(aString, fReservedLength);
   fStringPointer := @aString;
   fStringLength := 0;
+  fJSONNeedComma := False;
   fFirstCharPointer := Pointer(fStringPointer^);
 end;
 
@@ -142,6 +186,119 @@ begin
     ExtendReservedStringSize(lAddedLength);
   Move(Pointer(aString)^,  PWideCharArray(fFirstCharPointer)^[fStringLength], lAddedLength * SizeOf(WideChar));
   Inc(fStringLength, lAddedLength);
+end;
+
+procedure TUnicodeStringBuilder.AddInteger(aIntegerValue: Integer);
+begin
+  Add(IntToStr(aIntegerValue));
+end;
+
+procedure TUnicodeStringBuilder.JSON_StartArray;
+begin
+  fJSONNeedComma := False;
+  Add(JSON_OPENING_ARRAY_BRACKET);
+end;
+
+procedure TUnicodeStringBuilder.JSON_CloseArray;
+begin
+  fJSONNeedComma := True;
+  Add(JSON_CLOSING_ARRAY_BRACKET);
+end;
+
+procedure TUnicodeStringBuilder.JSON_StartObject;
+begin
+  fJSONNeedComma := False;
+  Add(JSON_OPENING_BRACKET);
+end;
+
+procedure TUnicodeStringBuilder.JSON_CloseObject;
+begin
+  fJSONNeedComma := True;
+  Add(JSON_CLOSING_BRACKET);
+end;
+
+procedure TUnicodeStringBuilder.JSON_AddStringParameter(const aName, aValue: string);
+begin
+  JSON_AddParameterName(aName);
+  Add(JSON_DOUBLE_BRACKETS);
+  JSON_AddEscapedString(aValue);
+  Add(JSON_DOUBLE_BRACKETS);
+end;
+
+procedure TUnicodeStringBuilder.JSON_AddIntegerParameter(const aName: string; aValue: Integer);
+begin
+  JSON_AddParameterName(aName);
+  AddInteger(aValue);
+end;
+
+procedure TUnicodeStringBuilder.JSON_AddEscapedString(const aString: string);
+var
+  lMaxStringLength: NativeUInt;
+  i: Integer;
+begin
+  lMaxStringLength := Length(aString) * 2;
+  if lMaxStringLength = 0 then Exit;
+  if fReservedLength <= (fStringLength + lMaxStringLength) then
+    ExtendReservedStringSize(lMaxStringLength);
+  for i := Low(aString) to High(aString) do
+  begin
+    case aString[i] of
+      '"', '\', '/':  // special symbols
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := aString[i];
+        Inc(fStringLength);
+      end;
+      #12:  // formfeed
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := 'f';
+        Inc(fStringLength);
+      end;
+      #10:  // linefeed
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := 'n';
+        Inc(fStringLength);
+      end;
+      #13:  // carriage return
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := 'r';
+        Inc(fStringLength);
+      end;
+      #8:  // backspace
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := 'b';
+        Inc(fStringLength);
+      end;
+      #9:  // horizontal tab
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := JSON_ESCAPE_CHAR;
+        Inc(fStringLength);
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := 't';
+        Inc(fStringLength);
+      end;
+    else
+      begin
+        PWideCharArray(fFirstCharPointer)^[fStringLength] := aString[i];
+        Inc(fStringLength);
+      end;
+    end;
+  end;
+end;
+
+procedure TUnicodeStringBuilder.JSON_AddArrayItemObject;
+begin
+  JSON_AddValueCommaPrefix;
+  Add(JSON_OPENING_BRACKET);
+  fJSONNeedComma := False;
 end;
 
 { TAbstractList }
