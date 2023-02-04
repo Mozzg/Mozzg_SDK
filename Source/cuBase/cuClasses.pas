@@ -139,7 +139,7 @@ procedure TUnicodeStringBuilder.AddFastInt32(aValue: Integer; aNegative: Boolean
 var
   I, J, K: Cardinal;
   lDigits: Integer;
-  lAddedLength: Integer;
+  lAddedLength: NativeUInt;
   lOrdNegative: Byte;
   P: PWideChar;
 begin
@@ -191,7 +191,7 @@ var
   I32, J32, K32, L32: Cardinal;
   lDigits: Byte;
   P: PChar;
-  lAddedLength: Integer;
+  lAddedLength: NativeUInt;
   lOrdNegative: Byte;
 begin
   {Within Integer Range - Use Faster Integer Version}

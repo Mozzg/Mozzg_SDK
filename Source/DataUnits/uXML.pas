@@ -49,6 +49,10 @@ type
     procedure Delete(aItem: TXMLNodeNameNodeTextGeneralItem; aFreeItem: Boolean = False);
   end;
 
+  // +++ посмотреть насчет спец символов типа &#34; и нужно ли их переводить и кодировать при выводе
+
+  // +++ добавить возможность получить нод по полному пути типа "root.data.city[3].IP" или использовать / вместо точек или оба варианта
+
   TXMLNode = class(THashBaseItem)
   protected
     fNodeName: string;
@@ -542,7 +546,7 @@ end;
 function TXMLNode.ReadXMLNodeFromStream(aStream: TXMLStream; aIsRoot: Boolean): Boolean;
 var
   lOpeningTagName, lClosingTagName: string;
-  lNodeValue: string;
+  lNodeValue, lCDataText: string;
   lNodeValueBuilder: TUnicodeStringBuilder;
   lChr: Char;
   lChildNode: TXMLNode;
@@ -596,6 +600,13 @@ begin
       // Check for child tag start
       if aStream.GetNextChar = XML_NODE_START_CHAR then
       begin
+        // Checking for CDATA section
+        if aStream.ReadCDATASection(lCDataText) then
+        begin
+          lNodeValueBuilder.Add(lCDataText);
+          Continue;
+        end;
+
         lChildNode := nil;
         try
           lChildNode := TXMLNode.Create;

@@ -18,7 +18,7 @@ const
   ANSI_CHAR_SIZE = SizeOf(AnsiChar);
   XML_CR: Char = Char($000D);
   XML_LF: Char = Char($000A);
-  XML_EXCEPTION_NEAR_CHAR_COUNT = 10;
+  XML_EXCEPTION_NEAR_CHAR_COUNT = 20;
 
   XML_HEADER_TEMPLATE: string = '<?xml version="%s" encoding="%s" ?>';
 
@@ -120,11 +120,13 @@ type
     function CopyFromXMLStream(aSourceStream: TXMLStream): Integer;
 
     procedure ReadHeaderAndExamineEncoding(aExpectedEncoding: TEncoding);
+    function ReadCDATASection(var aReadedText: string): Boolean;
     function ReadIdentifier: string;
     function ReadStringValue: string;
 
     procedure SkipSpaces;
     procedure SkipControls;
+    function CheckAndReadNextFullString(const aCheckString: string): Boolean; {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure CheckAndReadNextString(const aCheckString: string); {$IFNDEF DEBUG}inline;{$ENDIF}
     procedure CheckAndReadNextChar(const aCheckChar: Char); {$IFNDEF DEBUG}inline;{$ENDIF}
     // Get char on current position with advancing position
@@ -865,6 +867,41 @@ begin
   end;
 end;
 
+function TXMLStream.ReadCDATASection(var aReadedText: string): Boolean;
+const
+  CDATA_START_TEXT = '<![CDATA[';
+  CDATA_END_TEXT = ']]>';
+  CDATA_END_START_CHAR: Char = ']';
+var
+  lCDataTextBuilder: TUnicodeStringBuilder;
+  lChr: Char;
+begin
+  Result := False;
+  // Checking if there is a start to CDATA section
+  if not CheckAndReadNextFullString(CDATA_START_TEXT) then
+    Exit(False);
+
+  lCDataTextBuilder.Init(aReadedText);
+  try
+    lCDataTextBuilder.Add(CDATA_START_TEXT);
+    while not Result do
+    begin
+      lChr := GetNextChar;
+      if lChr = CDATA_END_START_CHAR then
+        if CheckAndReadNextFullString(CDATA_END_TEXT) then
+        begin
+          lCDataTextBuilder.Add(CDATA_END_TEXT);
+          Result := True;
+          Continue;
+        end;
+      lCDataTextBuilder.Add(ReadNextChar);
+    end;
+  finally
+    lCDataTextBuilder.Done;
+  end;
+  Result := True;
+end;
+
 function TXMLStream.ReadIdentifier: string;
 const
   START_CHARS: TSysCharSet = ['a'..'z', 'A'..'Z', '_', ':'];
@@ -922,8 +959,7 @@ begin
     begin
       lCurrentPosition := Seek(0, soCurrent);
       ReadNextChar;
-      lChr := GetNextChar;
-      if lChr = XML_NODE_COMMENT_START_CHAR then
+      if (GetNextChar = XML_NODE_COMMENT_START_CHAR) and (GetNextChar(1) = XML_NODE_DASH_CHAR) then
       begin
         ReadNextChar;
         CheckAndReadNextChar(XML_NODE_DASH_CHAR);
@@ -967,8 +1003,7 @@ begin
     begin
       lCurrentPosition := Seek(0, soCurrent);
       ReadNextChar;
-      lChr := GetNextChar;
-      if lChr = XML_NODE_COMMENT_START_CHAR then
+      if (GetNextChar = XML_NODE_COMMENT_START_CHAR) and (GetNextChar(1) = XML_NODE_DASH_CHAR) then
       begin
         ReadNextChar;
         CheckAndReadNextChar(XML_NODE_DASH_CHAR);
@@ -992,6 +1027,21 @@ begin
 
     Break;
   end;
+end;
+
+function TXMLStream.CheckAndReadNextFullString(const aCheckString: string): Boolean;
+var
+  i, lStartPosition: Integer;
+begin
+  lStartPosition := Seek(0, soCurrent);
+
+  for i := Low(aCheckString) to High(aCheckString) do
+    if ReadNextChar <> aCheckString[i] then
+    begin
+      Seek(lStartPosition, soBeginning);
+      Exit(False);
+    end;
+  Result := True;
 end;
 
 procedure TXMLStream.CheckAndReadNextString(const aCheckString: string);
@@ -1177,10 +1227,12 @@ begin
 
     SetLength(lBuffer, lRangeSize);
     Move(PByte(PByte(fMemory) + lLeftBorder)^, lBuffer[0], lRangeSize);
-    lNearText := TEncoding.Unicode.GetString(TEncoding.Convert(fXMLStreamEncoding, TEncoding.Unicode, lBuffer));
+    if fXMLStreamEncoding.CodePage = TEncoding.Unicode.CodePage then
+      lNearText := TEncoding.Unicode.GetString(lBuffer)
+    else
+      lNearText := TEncoding.Unicode.GetString(TEncoding.Convert(fXMLStreamEncoding, TEncoding.Unicode, lBuffer));
 
-    // +++ исправить параметр NearTextPosition, т.к. после конвертации позиция неправильная
-    raise EInvalidFormatXMLException.CreateFmt(EXCEPTION_MESSAGE_XML_INVALID_FORMAT, [fCurrentLineNumber], fCurrentLineNumber, lNearText, fPosition - lLeftBorder + 1);
+    raise EInvalidFormatXMLException.CreateFmt(EXCEPTION_MESSAGE_XML_INVALID_FORMAT, [fCurrentLineNumber], fCurrentLineNumber, lNearText, (fPosition - lLeftBorder) div CHAR_SIZE);
   end;
 end;
 
