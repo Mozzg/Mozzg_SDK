@@ -60,6 +60,7 @@ type
     fParent: TXMLNode;
     fHashGeneralChildren: Boolean;
     fHashChildrenProperties: Boolean;
+    fNodePathSeparator: Char;
 
     fImmediateChildren: TXMLNodes;
     fNodeProperties: TXMLProperties;
@@ -112,6 +113,7 @@ type
     procedure LoadFromFile(const aFileName: string);
     procedure SaveToFile(const aFileName: string; aEncoding: TEncoding = nil);
 
+    function GetNodeByNodePath(const aSearchNodePath: string): TXMLNode;
     function GetNodeAsText(aWriteXMLHeader: Boolean = False; aWritePreamble: Boolean = False): string;
 
     procedure AddAsChild(aNode: TXMLNode);
@@ -157,6 +159,7 @@ type
 
     property NodeName: string read fNodeName write SetNodeName;
     property NodeTextValue: string read fNodeTextValue write SetNodeTextValue;
+    property NodePathSeparator: Char read fNodePathSeparator write fNodePathSeparator;
     property Parent: TXMLNode read GetParent write SetParent;
     property ImmediateChildren: TXMLNodes read GetImmediateChildren;
     property Properties: TXMLProperties read fNodeProperties;
@@ -327,6 +330,7 @@ begin
   fParent := nil;
   fHashGeneralChildren := False;
   fHashChildrenProperties := False;
+  fNodePathSeparator := XML_DEFAULT_NODE_PATH_SEPARATOR;
   SetNodeName(aNodeName);
   SetNodeTextValue(aNodeTextValue);
   fImmediateChildren := TXMLNodes.Create(Self, 11, True, True);
@@ -895,6 +899,78 @@ begin
   finally
     lXMLStream.Free;
   end;
+end;
+
+function TXMLNode.GetNodeByNodePath(const aSearchNodePath: string): TXMLNode;
+const
+  ARRAY_BRACKET_START = '[';
+  ARRAY_BRACKET_END = ']';
+var
+  lTempString, lPathElement: string;
+  lPathArray: array of string;
+  lPos, lPosEnd: Integer;
+  i, j: Integer;
+  lCurrentNode: TXMLNode;
+begin
+  lTempString := aSearchNodePath;
+
+  repeat
+    lPos := Pos(fNodePathSeparator, lTempString);
+    if lPos = 0 then
+    begin
+      lPathElement := lTempString;
+      lTempString := EmptyStr;
+    end
+    else
+    begin
+      lPathElement := Copy(lTempString, 1, lPos - 1);
+      Delete(lTempString, 1, lPos);
+    end;
+
+    if SameStr(lPathElement, EmptyStr) then
+      Exit(nil);
+
+    i := Length(lPathArray);
+    SetLength(lPathArray, i + 1);
+    lPathArray[i] := lPathElement;
+  until SameStr(lTempString, EmptyStr);
+
+  lCurrentNode := Self;
+  for i := Low(lPathArray) to High(lPathArray) do
+  begin
+    lPos := Pos(ARRAY_BRACKET_START, lPathArray[i]);
+    if lPos <> 0 then
+      lPosEnd := Pos(ARRAY_BRACKET_END, lPathArray[i], lPos)
+    else
+      lPosEnd := 0;
+
+    if (lPos = 0) or (lPosEnd = 0) then
+      lCurrentNode := lCurrentNode.FindFirstByNodeNameInImmediate(lPathArray[i])
+    else
+    begin
+      lTempString := Copy(lPathArray[i], lPos + 1, lPosEnd - lPos - 1);
+      j := StrToIntDef(lTempString, -1);
+      if j < 0 then Exit(nil);
+      lPathElement := Copy(lPathArray[i], 1, lPos - 1);
+      if SameStr(lPathElement, EmptyStr) then Exit(nil);
+
+      lCurrentNode := lCurrentNode.GetFirstChild;
+      while lCurrentNode <> nil do
+      begin
+        if SameStr(lCurrentNode.NodeName, lPathElement) then
+        begin
+          Dec(j);
+          if j < 0 then Break;
+        end;
+
+        lCurrentNode := lCurrentNode.GetNextSibling;
+      end;
+    end;
+
+    if lCurrentNode = nil then Exit(nil);
+  end;
+
+  Result := lCurrentNode;
 end;
 
 function TXMLNode.GetNodeAsText(aWriteXMLHeader: Boolean = False; aWritePreamble: Boolean = False): string;

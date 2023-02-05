@@ -48,6 +48,7 @@ const
   XML_EQUALS_CHAR: Char = '=';
   XML_SPACE_CHAR: Char = ' ';
   XML_TAB_CHAR: Char = #9;
+  XML_DEFAULT_NODE_PATH_SEPARATOR: Char = '.';
 
 type
   TCustomMemStream = class(TStream)
