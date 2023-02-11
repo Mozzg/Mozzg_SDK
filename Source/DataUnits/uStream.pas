@@ -48,6 +48,10 @@ const
   XML_EQUALS_CHAR: Char = '=';
   XML_SPACE_CHAR: Char = ' ';
   XML_TAB_CHAR: Char = #9;
+  XML_ESCAPE_START_CHAR: Char = '&';
+  XML_ESCAPE_END_CHAR: Char = ';';
+  XML_ESCAPE_CODE_CHAR: Char = '#';
+  XML_ESCAPE_HEX_CODE_CHAR: Char = 'x';
   XML_DEFAULT_NODE_PATH_SEPARATOR: Char = '.';
 
 type
@@ -134,8 +138,6 @@ type
     function ReadNextChar: Char; {$IFNDEF DEBUG}inline;{$ENDIF}
     // Get char on current position without advancing position
     function GetNextChar(aCharCountOffset: Cardinal = 0): Char; {$IFNDEF DEBUG}inline;{$ENDIF}
-    // Advance position to next char without checking for line endings
-    //procedure SkipNextChar;
 
     procedure WritePreamble;
     procedure WriteXMLHeader(aHeaderEncodingProperty: TEncoding = nil; const aXMLVersion: string = '1.0');

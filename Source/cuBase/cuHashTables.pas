@@ -1,11 +1,11 @@
-{$I SDK_common_defines.inc}
+{$I ..\SDK_common_defines.inc}
 
 unit cuHashTables;
 
 interface
 
 uses
-  {System.Math, }System.SysUtils, System.Variants,
+  System.SysUtils, System.Variants,
   cuClasses, cuConsts,
   uCustomExceptions;
 
@@ -51,7 +51,7 @@ type
   TStringHashTable = record
     HashTable: TBaseHashTable;
     StringOffset: Integer;
-    procedure Init(aSize: Cardinal; aStringOffset: Integer);
+    procedure Init(aSize: Cardinal; aStringOffset: Integer); inline;
     procedure SetTableSize(aNewTableSize: Cardinal); inline;
     procedure AddToTable(aHashChain: PHashChain); inline;
     procedure RemoveFromTable(aHashChain: PHashChain); inline;
@@ -67,7 +67,7 @@ type
   TIntegerHashTable = record
     HashTable: TBaseHashTable;
     IntegerOffset: Integer;
-    procedure Init(aSize: Cardinal; aIntegerOffset: Integer);
+    procedure Init(aSize: Cardinal; aIntegerOffset: Integer); inline;
     procedure SetTableSize(aNewTableSize: Cardinal); inline;
     procedure AddToTable(aHashChain: PHashChain); inline;
     procedure RemoveFromTable(aHashChain: PHashChain); inline;
@@ -83,7 +83,7 @@ type
   TInt64HashTable = record
     HashTable: TBaseHashTable;
     Int64Offset: Integer;
-    procedure Init(aSize: Cardinal; aInt64Offset: Integer);
+    procedure Init(aSize: Cardinal; aInt64Offset: Integer); inline;
     procedure SetTableSize(aNewTableSize: Cardinal); inline;
     procedure AddToTable(aHashChain: PHashChain); inline;
     procedure RemoveFromTable(aHashChain: PHashChain); inline;
@@ -99,7 +99,7 @@ type
   TDoubleHashTable = record
     HashTable: TBaseHashTable;
     DoubleOffset: Integer;
-    procedure Init(aSize: Cardinal; aDoubleOffset: Integer);
+    procedure Init(aSize: Cardinal; aDoubleOffset: Integer); inline;
     procedure SetTableSize(aNewTableSize: Cardinal); inline;
     procedure AddToTable(aHashChain: PHashChain); inline;
     procedure RemoveFromTable(aHashChain: PHashChain); inline;
@@ -111,10 +111,11 @@ type
     property HashTableSize: Cardinal read HashTable.PointerTableSize;
   end;
 
+  // Record for Byte/Boolean hash table
   TByteHashTable = record
     HashTable: TBaseHashTable;
     ByteOffset: Integer;
-    procedure Init(aSize: Cardinal; aByteOffset: Integer);
+    procedure Init(aSize: Cardinal; aByteOffset: Integer); inline;
     procedure SetTableSize(aNewTableSize: Cardinal); inline;
     procedure AddToTable(aHashChain: PHashChain); inline;
     procedure RemoveFromTable(aHashChain: PHashChain); inline;
@@ -122,6 +123,22 @@ type
     class function GetByteHashValue(const aValue: Byte): Cardinal; inline; static;
     class function GetBooleanHashValue(const aValue: Boolean): Cardinal; inline; static;
     function FindFirst(const aSearchValue: Byte): TAbstractListItem;
+    function FindNext(aHashChain: PHashChain): TAbstractListItem;
+
+    property HashTableSize: Cardinal read HashTable.PointerTableSize;
+  end;
+
+  // Record for Char hash table
+  TCharHashTable = record
+    HashTable: TBaseHashTable;
+    CharOffset: Integer;
+    procedure Init(aSize: Cardinal; aCharOffset: Integer); inline;
+    procedure SetTableSize(aNewTableSize: Cardinal); inline;
+    procedure AddToTable(aHashChain: PHashChain); inline;
+    procedure RemoveFromTable(aHashChain: PHashChain); inline;
+    procedure Destroy; inline;
+    class function GetCharHashValue(const aValue: Char): Cardinal; inline; static;
+    function FindFirst(const aSearchValue: Char): TAbstractListItem;
     function FindNext(aHashChain: PHashChain): TAbstractListItem;
 
     property HashTableSize: Cardinal read HashTable.PointerTableSize;
@@ -169,6 +186,84 @@ type
     property HashSize: Cardinal read GetHashSize;
     property ExtensionThresholdSize: Cardinal read fAutoExtensionThreshold;
     property AutoExtendHash: Boolean read fAutoExtendHash;
+  end;
+
+  // Hash table item, containing hashed Text(string) data
+  TTextHashItem = class(THashBaseItem)
+  protected
+    fText: string;
+    fTextHashChain: THashChain;
+
+    procedure InitHashChains; override;
+    procedure SetText(const aNewText: string);
+  public
+    constructor Create(const aText: string);
+
+    function GetNext: TTextHashItem; inline;
+    function GetPrev: TTextHashItem; inline;
+
+    property Text: string read fText write SetText;
+  end;
+
+  // Hash table for hashed Text(string) data
+  TTextHashItems = class(THashBaseItems)
+  protected
+    fTextHashTable: TStringHashTable;
+
+    procedure InitHashTables(aHashSize: Cardinal); override;
+    procedure AddToHashTable(aHashItem: THashBaseItem); override;
+    procedure RemoveFromHashTable(aHashItem: THashBaseItem); override;
+    procedure SetHashSize(aHashSize: Cardinal); override;
+    procedure DestroyHashTables; override;
+    function CompareByText(aItem1, aItem2: TObject): Integer; inline;
+  public
+    procedure Add(aItem: TTextHashItem); inline;
+    procedure Insert(aItem, aBeforeItem: TTextHashItem); inline;
+    procedure Delete(aItem: TTextHashItem; aFreeItem: Boolean = True); inline;
+    function FindFirstByText(const aSearchText: string): TTextHashItem; inline;
+    function FindNextByText(aItem: TTextHashItem): TTextHashItem; inline;
+    function GetFirst: TTextHashItem; inline;
+    function GetLast: TTextHashItem; inline;
+    procedure SortByText; inline;
+  end;
+
+  // Hash table item, containing hashed Text(string) and hashed Char(Char)
+  TTextCharHashItem = class(TTextHashItem)
+  protected
+    fChar: Char;
+    fCharHashChain: THashChain;
+
+    procedure InitHashChains; override;
+    procedure SetChar(const aNewChar: Char);
+  public
+    constructor Create(const aText: string; const aChar: Char);
+
+    function GetNext: TTextCharHashItem; inline;
+    function GetPrev: TTextCharHashItem; inline;
+
+    property CharValue: Char read fChar write SetChar;
+  end;
+
+  // Hash table for hashed Text(string) and hashed Char(Char)
+  TTextCharHashItems = class(TTextHashItems)
+  protected
+    fCharHashTable: TCharHashTable;
+
+    procedure InitHashTables(aHashSize: Cardinal); override;
+    procedure AddToHashTable(aHashItem: THashBaseItem); override;
+    procedure RemoveFromHashTable(aHashItem: THashBaseItem); override;
+    procedure SetHashSize(aHashSize: Cardinal); override;
+    procedure DestroyHashTables; override;
+    function CompareByChar(aItem1, aItem2: TObject): Integer; inline;
+  public
+    procedure Add(aItem: TTextCharHashItem); inline;
+    procedure Insert(aItem, aBeforeItem: TTextCharHashItem); inline;
+    procedure Delete(aItem: TTextCharHashItem; aFreeItem: Boolean = True); inline;
+    function FindFirstByChar(const aSearchChar: Char): TTextCharHashItem; inline;
+    function FindNextByChar(aItem: TTextCharHashItem): TTextCharHashItem; inline;
+    function GetFirst: TTextCharHashItem; inline;
+    function GetLast: TTextCharHashItem; inline;
+    procedure SortByChar; inline;
   end;
 
   // Type of variant, contained in TNameVariantItem
@@ -302,7 +397,7 @@ implementation
 
 { }
 
-procedure QuickSortObjectArray(aObjectArray: PObjectArray; aLeftIndex, aRightIndex: Integer; aCompareFunc: TObjectCompareFunction);
+procedure QuickSortObjectArray(aObjectArray: PObjectArray; aLeftIndex, aRightIndex: Integer; aCompareFunction: TObjectCompareFunction);
 var
   lLL, lRR: Integer;
   lLLComp, lRRComp: Integer;
@@ -314,11 +409,11 @@ begin
     mItem := aObjectArray^[(aLeftIndex + aRightIndex) shr 1];
     repeat
       repeat
-        lLLComp := aCompareFunc(aObjectArray^[lLL], mItem);
+        lLLComp := aCompareFunction(aObjectArray^[lLL], mItem);
         if lLLComp < 0 then Inc(lLL);
       until lLLComp >= 0;
       repeat
-        lRRComp := aCompareFunc(aObjectArray^[lRR], mItem);
+        lRRComp := aCompareFunction(aObjectArray^[lRR], mItem);
         if lRRComp > 0 then Dec(lRR);
       until lRRComp <= 0;
       if lLL <= lRR then
@@ -333,7 +428,7 @@ begin
         Dec(lRR);
       end;
     until lLL > lRR;
-    if aLeftIndex < lRR then QuickSortObjectArray(aObjectArray, aLeftIndex, lRR, aCompareFunc);
+    if aLeftIndex < lRR then QuickSortObjectArray(aObjectArray, aLeftIndex, lRR, aCompareFunction);
     aLeftIndex := lLL;
   until aLeftIndex >= aRightIndex;
 end;
@@ -1120,6 +1215,86 @@ begin
   Result := nil;
 end;
 
+{ TCharHashTable }
+
+procedure TCharHashTable.Init(aSize: Cardinal; aCharOffset: Integer);
+begin
+  HashTable.Init;
+  HashTable.SetTableSize(aSize);
+  CharOffset := aCharOffset;
+end;
+
+procedure TCharHashTable.SetTableSize(aNewTableSize: Cardinal);
+begin
+  HashTable.SetTableSize(aNewTableSize);
+end;
+
+procedure TCharHashTable.AddToTable(aHashChain: PHashChain);
+begin
+  HashTable.AddToTable(aHashChain);
+end;
+
+procedure TCharHashTable.RemoveFromTable(aHashChain: PHashChain);
+begin
+  HashTable.RemoveFromTable(aHashChain);
+end;
+
+procedure TCharHashTable.Destroy;
+begin
+  HashTable.Destroy;
+end;
+
+class function TCharHashTable.GetCharHashValue(const aValue: Char): Cardinal;
+begin
+  Result := TBaseHashTable.GetHashValue(aValue, SizeOf(aValue));
+end;
+
+function TCharHashTable.FindFirst(const aSearchValue: Char): TAbstractListItem;
+var
+  lSearchHashValue: Cardinal;
+  lHashChain: PHashChain;
+begin
+  lSearchHashValue := TCharHashTable.GetCharHashValue(aSearchValue);
+  lHashChain := HashTable.PointerTable^[lSearchHashValue mod HashTable.PointerTableSize];
+  while lHashChain <> nil do
+  begin
+    if (lHashChain^.HashValue = lSearchHashValue)
+        and (aSearchValue = PChar(@(PByteArray(lHashChain^.Item)^[CharOffset]))^)
+    then
+      Exit(lHashChain^.Item);
+    lHashChain := lHashChain^.NextChainLink;
+  end;
+  Result := nil;
+end;
+
+function TCharHashTable.FindNext(aHashChain: PHashChain): TAbstractListItem;
+var
+  lSearchValue: Char;
+  lSearchHashValue: Cardinal;
+  lHashChain: PHashChain;
+begin
+  lSearchValue := PChar(@(PByteArray(aHashChain^.Item)^[CharOffset]))^;
+  lSearchHashValue := aHashChain^.HashValue;
+  lHashChain := HashTable.PointerTable^[lSearchHashValue mod HashTable.PointerTableSize];
+  while lHashChain <> nil do
+  begin
+    if aHashChain^.Item = lHashChain^.Item then
+      Break;
+    lHashChain := lHashChain^.NextChainLink;
+  end;
+  if lHashChain = nil then Exit(nil);
+  lHashChain := lHashChain^.NextChainLink;
+  while lHashChain <> nil do
+  begin
+    if (lHashChain^.HashValue = lSearchHashValue)
+        and (lSearchValue = PChar(@(PByteArray(lHashChain^.Item)^[CharOffset]))^)
+    then
+      Exit(lHashChain^.Item);
+    lHashChain := lHashChain^.NextChainLink;
+  end;
+  Result := nil;
+end;
+
 { THashBaseItem }
 
 procedure THashBaseItem.AfterConstruction;
@@ -1151,8 +1326,10 @@ begin
 end;
 
 procedure THashBaseItems.CheckExtendAndRehash;
+{$IFDEF STATIC_CHAINS}
 var
   lCurrent: TAbstractListItem;
+{$ENDIF}
 begin
   // If hash table extension is enabled and we reached extension threshold, resize and rehash table
   if fAutoExtendHash and (Count >= fAutoExtensionThreshold) then
@@ -1267,6 +1444,240 @@ begin
     lItem.Free; // In item's destructor it will remove itself from list
     lItem := lTempItem;
   end;
+end;
+
+{ TTextHashItem }
+
+constructor TTextHashItem.Create(const aText: string);
+begin
+  inherited Create;
+  SetText(aText);
+end;
+
+procedure TTextHashItem.InitHashChains;
+begin
+  fTextHashChain.Item := Self;
+end;
+
+procedure TTextHashItem.SetText(const aNewText: string);
+begin
+  if SameStr(aNewText, fText) then Exit;
+
+  if fOwner = nil then
+  begin
+    fText := aNewText;
+    fTextHashChain.HashValue := TStringHashTable.GetStringHashValue(fText);
+    Exit;
+  end;
+  TTextHashItems(fOwner).fTextHashTable.RemoveFromTable(@fTextHashChain);
+  fText := aNewText;
+  fTextHashChain.HashValue := TStringHashTable.GetStringHashValue(fText);
+  TTextHashItems(fOwner).fTextHashTable.AddToTable(@fTextHashChain);
+end;
+
+function TTextHashItem.GetNext: TTextHashItem;
+begin
+  Result := TTextHashItem(fNext);
+end;
+
+function TTextHashItem.GetPrev: TTextHashItem;
+begin
+  Result := TTextHashItem(fPrev);
+end;
+
+{ TTextHashItems }
+
+procedure TTextHashItems.InitHashTables(aHashSize: Cardinal);
+begin
+  fTextHashTable.Init(aHashSize, Integer(@TTextHashItem(0).fText))
+end;
+
+procedure TTextHashItems.AddToHashTable(aHashItem: THashBaseItem);
+begin
+  fTextHashTable.AddToTable(@TTextHashItem(aHashItem).fTextHashChain);
+end;
+
+procedure TTextHashItems.RemoveFromHashTable(aHashItem: THashBaseItem);
+begin
+  fTextHashTable.RemoveFromTable(@TTextHashItem(aHashItem).fTextHashChain);
+end;
+
+procedure TTextHashItems.SetHashSize(aHashSize: Cardinal);
+begin
+  fTextHashTable.SetTableSize(aHashSize);
+end;
+
+procedure TTextHashItems.DestroyHashTables;
+begin
+  fTextHashTable.Destroy;
+end;
+
+function TTextHashItems.CompareByText(aItem1, aItem2: TObject): Integer;
+begin
+  Result := CompareStr(TTextHashItem(aItem1).fText, TTextHashItem(aItem2).fText);
+end;
+
+procedure TTextHashItems.Add(aItem: TTextHashItem);
+begin
+  InternalAddItem(aItem);
+end;
+
+procedure TTextHashItems.Insert(aItem, aBeforeItem: TTextHashItem);
+begin
+  InternalInsertItem(aItem, aBeforeItem);
+end;
+
+procedure TTextHashItems.Delete(aItem: TTextHashItem; aFreeItem: Boolean = True);
+begin
+  InternalDeleteItem(aItem, aFreeItem);
+end;
+
+function TTextHashItems.FindFirstByText(const aSearchText: string): TTextHashItem;
+begin
+  Result := TTextHashItem(fTextHashTable.FindFirst(aSearchText));
+end;
+
+function TTextHashItems.FindNextByText(aItem: TTextHashItem): TTextHashItem;
+begin
+  Result := TTextHashItem(fTextHashTable.FindNext(@aItem.fTextHashChain));
+end;
+
+function TTextHashItems.GetFirst: TTextHashItem;
+begin
+  Result := TTextHashItem(fFirst);
+end;
+
+function TTextHashItems.GetLast: TTextHashItem;
+begin
+  Result := TTextHashItem(fLast);
+end;
+
+procedure TTextHashItems.SortByText;
+begin
+  Sort(CompareByText);
+end;
+
+
+{ TTextCharHashItem }
+
+constructor TTextCharHashItem.Create(const aText: string; const aChar: Char);
+begin
+  inherited Create(aText);
+  SetChar(aChar);
+end;
+
+procedure TTextCharHashItem.InitHashChains;
+begin
+  inherited InitHashChains;
+  fCharHashChain.Item := Self;
+end;
+
+procedure TTextCharHashItem.SetChar(const aNewChar: Char);
+begin
+  if fChar = aNewChar then Exit;
+
+  if fOwner = nil then
+  begin
+    fChar := aNewChar;
+    fCharHashChain.HashValue := TCharHashTable.GetCharHashValue(fChar);
+    Exit;
+  end;
+  TTextCharHashItems(fOwner).fCharHashTable.RemoveFromTable(@fCharHashChain);
+  fChar := aNewChar;
+  fCharHashChain.HashValue := TCharHashTable.GetCharHashValue(fChar);
+  TTextCharHashItems(fOwner).fCharHashTable.AddToTable(@fCharHashChain);
+end;
+
+function TTextCharHashItem.GetNext: TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fNext);
+end;
+
+function TTextCharHashItem.GetPrev: TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fPrev);
+end;
+
+{ TTextCharHashItems }
+
+procedure TTextCharHashItems.InitHashTables(aHashSize: Cardinal);
+begin
+  inherited InitHashTables(aHashSize);
+  fCharHashTable.Init(aHashSize, Integer(@TTextCharHashItem(0).fChar));
+end;
+
+procedure TTextCharHashItems.AddToHashTable(aHashItem: THashBaseItem);
+begin
+  inherited AddToHashTable(aHashItem);
+  fCharHashTable.AddToTable(@TTextCharHashItem(aHashItem).fCharHashChain);
+end;
+
+procedure TTextCharHashItems.RemoveFromHashTable(aHashItem: THashBaseItem);
+begin
+  inherited RemoveFromHashTable(aHashItem);
+  fCharHashTable.RemoveFromTable(@TTextCharHashItem(aHashItem).fCharHashChain);
+end;
+
+procedure TTextCharHashItems.SetHashSize(aHashSize: Cardinal);
+begin
+  inherited SetHashSize(aHashSize);
+  fCharHashTable.SetTableSize(aHashSize);
+end;
+
+procedure TTextCharHashItems.DestroyHashTables;
+begin
+  inherited DestroyHashTables;
+  fCharHashTable.Destroy;
+end;
+
+function TTextCharHashItems.CompareByChar(aItem1, aItem2: TObject): Integer;
+begin
+  if TTextCharHashItem(aItem1).fChar < TTextCharHashItem(aItem2).fChar then
+    Result := -1
+  else if TTextCharHashItem(aItem1).fChar > TTextCharHashItem(aItem2).fChar then
+    Result := 1
+  else
+    Result := 0;
+end;
+
+procedure TTextCharHashItems.Add(aItem: TTextCharHashItem);
+begin
+  InternalAddItem(aItem);
+end;
+
+procedure TTextCharHashItems.Insert(aItem, aBeforeItem: TTextCharHashItem);
+begin
+  InternalInsertItem(aItem, aBeforeItem);
+end;
+
+procedure TTextCharHashItems.Delete(aItem: TTextCharHashItem; aFreeItem: Boolean = True);
+begin
+  InternalDeleteItem(aItem, aFreeItem);
+end;
+
+function TTextCharHashItems.FindFirstByChar(const aSearchChar: Char): TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fCharHashTable.FindFirst(aSearchChar));
+end;
+
+function TTextCharHashItems.FindNextByChar(aItem: TTextCharHashItem): TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fCharHashTable.FindNext(@aItem.fCharHashChain));
+end;
+
+function TTextCharHashItems.GetFirst: TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fFirst);
+end;
+
+function TTextCharHashItems.GetLast: TTextCharHashItem;
+begin
+  Result := TTextCharHashItem(fLast);
+end;
+
+procedure TTextCharHashItems.SortByChar;
+begin
+  Sort(CompareByChar);
 end;
 
 { TNameVariantItem }

@@ -1,4 +1,4 @@
-{$I SDK_common_defines.inc}
+{$I ..\SDK_common_defines.inc}
 
 unit uXML;
 
@@ -14,6 +14,27 @@ type
   TXMLNodes = class;
   TXMLProperty = class;
   TXMLProperties = class;
+
+  // Class for storing 1 link between Character and Text for replacement
+  TXMLEntityItem = class(TTextCharHashItem)
+  public
+    function GetNext: TXMLEntityItem; inline;
+    function GetPrev: TXMLEntityItem; inline;
+  end;
+
+  // Hash table for storing Char-Text pair for replacement
+  TXMLEntityItems = class(TTextCharHashItems)
+  protected
+    fCharSet: TSysCharSet;
+  public
+    function FindFirstByText(const aSearchText: string): TXMLEntityItem; inline;
+    function FindFirstByChar(const aSearchChar: Char): TXMLEntityItem; inline;
+    function GetFirst: TXMLEntityItem; inline;
+    function GetLast: TXMLEntityItem; inline;
+
+    procedure RecalculateCharSet; inline;
+    function IsCharInSet(const aChar: Char): Boolean; inline;
+  end;
 
   // Class for storing hash related things for general search by nodes in all children classes
   TXMLNodeNameNodeTextGeneralItem = class(THashBaseItem)
@@ -49,9 +70,9 @@ type
     procedure Delete(aItem: TXMLNodeNameNodeTextGeneralItem; aFreeItem: Boolean = False);
   end;
 
-  // +++ посмотреть насчет спец символов типа &#34; и нужно ли их переводить и кодировать при выводе
+  // +++ сделать парсинг и формирование JSON. Использовать наработки на XML.
 
-  // +++ добавить возможность получить нод по полному пути типа "root.data.city[3].IP" или использовать / вместо точек или оба варианта
+  // +++ сделать в дальнейшем XML to JSON и обратно
 
   TXMLNode = class(THashBaseItem)
   protected
@@ -61,6 +82,8 @@ type
     fHashGeneralChildren: Boolean;
     fHashChildrenProperties: Boolean;
     fNodePathSeparator: Char;
+    fCharReplacementHash: TXMLEntityItems;
+    fCharReplacementHashInitialized: Boolean;
 
     fImmediateChildren: TXMLNodes;
     fNodeProperties: TXMLProperties;
@@ -88,8 +111,8 @@ type
     function GetGeneralChildrenCount: Int64;
     function GetGeneralHashSize: Cardinal;
     function GetGeneralHashElementCount: Int64;
-    procedure AssignGeneralSettings(aFromNode: TXMLNode);
     {$ENDIF}
+    procedure AssignNodeSettings(aFromNode: TXMLNode);
 
     function ReadXMLNodeFromStream(aStream: TXMLStream; aIsRoot: Boolean): Boolean;
     function ReadNextXMLPropertyFromStream(aStream: TXMLStream): Boolean;
@@ -98,6 +121,10 @@ type
 
     function InternalConvertValueToVariant(const aTextValue: string): Variant;
 
+    function EscapeString(const aInputString: string): string;
+    function UnescapeString(const aInputString: string): string;
+
+    procedure InitReplacementHash;
     procedure InitHashChains; override;
     // Hiding properties from parent class
     property Owner;
@@ -116,9 +143,9 @@ type
     function GetNodeByNodePath(const aSearchNodePath: string): TXMLNode;
     function GetNodeAsText(aWriteXMLHeader: Boolean = False; aWritePreamble: Boolean = False): string;
 
+    function CreateNodeAsChild(const aNodeName: string = EmptyString; const aNodeTextValue: string = EmptyString): TXMLNode;
     procedure AddAsChild(aNode: TXMLNode);
     procedure InsertAsChild(aNode, aBeforeNode: TXMLNode);
-    function CreateNodeAsChild(const aNodeName, aNodeTextValue: string): TXMLNode;
     procedure RemoveFromChildren(aNode: TXMLNode);
 
     {$IFNDEF STATIC_CHAINS}
@@ -244,6 +271,58 @@ type
 
 implementation
 
+{ TXMLEntityItem }
+
+function TXMLEntityItem.GetNext: TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(fNext);
+end;
+
+function TXMLEntityItem.GetPrev: TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(fPrev);
+end;
+
+{ TXMLEntityItems }
+
+function TXMLEntityItems.FindFirstByText(const aSearchText: string): TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(inherited FindFirstByText(aSearchText));
+end;
+
+function TXMLEntityItems.FindFirstByChar(const aSearchChar: Char): TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(inherited FindFirstByChar(aSearchChar));
+end;
+
+function TXMLEntityItems.GetFirst: TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(fFirst);
+end;
+
+function TXMLEntityItems.GetLast: TXMLEntityItem;
+begin
+  Result := TXMLEntityItem(fLast);
+end;
+
+procedure TXMLEntityItems.RecalculateCharSet;
+var
+  lCurrentItem: TXMLEntityItem;
+begin
+  fCharSet := [];
+  lCurrentItem := GetFirst;
+  while lCurrentItem <> nil do
+  begin
+    Include(fCharSet, AnsiChar(lCurrentItem.CharValue));
+    lCurrentItem := lCurrentItem.GetNext;
+  end;
+end;
+
+function TXMLEntityItems.IsCharInSet(const aChar: Char): Boolean;
+begin
+  Result := CharInSet(aChar, fCharSet);
+end;
+
 { TXMLNodeNameNodeTextGeneralItem }
 
 constructor TXMLNodeNameNodeTextGeneralItem.Create(aParent: TXMLNode; const aNodeName, aNodeTextValue: string);
@@ -331,6 +410,8 @@ begin
   fHashGeneralChildren := False;
   fHashChildrenProperties := False;
   fNodePathSeparator := XML_DEFAULT_NODE_PATH_SEPARATOR;
+  fCharReplacementHash := nil;
+  fCharReplacementHashInitialized := False;
   SetNodeName(aNodeName);
   SetNodeTextValue(aNodeTextValue);
   fImmediateChildren := TXMLNodes.Create(Self, 11, True, True);
@@ -353,6 +434,7 @@ begin
   {$ENDIF}
   FreeAndNil(fImmediateChildren);
   FreeAndNil(fNodeProperties);
+  FreeAndNil(fCharReplacementHash);
   inherited Destroy;
 end;
 
@@ -539,13 +621,16 @@ function TXMLNode.GetGeneralHashElementCount: Int64;
 begin
   Result := fGeneralChildren.fGeneralNamesStringHashTable.HashTable.PointerTableElementCount;
 end;
+{$ENDIF}
 
-procedure TXMLNode.AssignGeneralSettings(aFromNode: TXMLNode);
+procedure TXMLNode.AssignNodeSettings(aFromNode: TXMLNode);
 begin
+  {$IFNDEF STATIC_CHAINS}
   fHashGeneralChildren := aFromNode.fHashGeneralChildren;
   fHashChildrenProperties := aFromNode.fHashChildrenProperties;
+  {$ENDIF}
+  fNodePathSeparator := aFromNode.fNodePathSeparator;
 end;
-{$ENDIF}
 
 function TXMLNode.ReadXMLNodeFromStream(aStream: TXMLStream; aIsRoot: Boolean): Boolean;
 var
@@ -598,7 +683,7 @@ begin
             Continue;
         end;
         lChr := aStream.ReadNextChar;
-        lNodeValueBuilder.Add(lChr);
+        lNodeValueBuilder.Add(lChr); 
         Continue;
       end;
       // Check for child tag start
@@ -611,14 +696,8 @@ begin
           Continue;
         end;
 
-        lChildNode := nil;
-        try
-          lChildNode := TXMLNode.Create;
-          Self.AddAsChild(lChildNode);
-        except
-          FreeAndNil(lChildNode);
-          raise;
-        end;
+        lChildNode := Self.CreateNodeAsChild;
+        lChildNode.InitReplacementHash;
         lChildNode.ReadXMLNodeFromStream(aStream, False);
       end;
     until False;
@@ -642,7 +721,11 @@ begin
 
   // Apply name and value to node
   Self.NodeName := lOpeningTagName;
-  Self.NodeTextValue := lNodeValue;
+  try
+    Self.NodeTextValue := UnescapeString(lNodeValue);
+  except
+    aStream.RaiseInvalidXMLFormat;
+  end;
 
   Result := True;
 end;
@@ -662,7 +745,11 @@ begin
   aStream.SkipSpaces;
   aStream.CheckAndReadNextChar(XML_EQUALS_CHAR);
   aStream.SkipSpaces;
-  lValue := aStream.ReadStringValue;
+  try
+    lValue := UnescapeString(aStream.ReadStringValue);
+  except
+    aStream.RaiseInvalidXMLFormat;
+  end;
   // Converting string value to specific variant type
   lVariantValue := InternalConvertValueToVariant(lValue);
   // Creating and adding property
@@ -701,7 +788,7 @@ begin
   // If we only have text value, write it as single line
   if (fImmediateChildren.Count = 0) and (aNestingLevel <> 0) then
   begin
-    aStream.WriteString(NodeTextValue);
+    aStream.WriteString(EscapeString(NodeTextValue));
     // Writing closing tag
     aStream.WriteXMLNodeStartChar;
     aStream.WriteXMLNodeCloseChar;
@@ -716,10 +803,10 @@ begin
   begin
     aStream.WriteCRLF;
     aStream.WriteIndent(aNestingLevel);
-    aStream.WriteString(NodeTextValue);
+    aStream.WriteString(EscapeString(NodeTextValue));
   end;
 
-  lChildNode := fImmediateChildren.GetFirst;
+  lChildNode := GetFirstChild;
   while lChildNode <> nil do
   begin
     lChildNode.WriteXMLNodeToStream(aStream, aNestingLevel);
@@ -747,7 +834,7 @@ begin
     aStream.WriteString(lCurrentProperty.Name);
     aStream.WriteEqualsChar;
     aStream.WriteQuotationChar;
-    aStream.WriteString(lCurrentProperty.AsString);
+    aStream.WriteString(EscapeString(lCurrentProperty.AsString));
     aStream.WriteQuotationChar;
     lCurrentProperty := lCurrentProperty.GetNext;
   end;
@@ -797,6 +884,121 @@ begin
   Result := aTextValue;
 end;
 
+function TXMLNode.EscapeString(const aInputString: string): string;
+var
+  lResultBuilder: TUnicodeStringBuilder;
+  i: Integer;
+  lEscapeItem: TXMLEntityItem; 
+begin
+  lResultBuilder.Init(Result, Length(aInputString) * 2);
+  try
+    for i := Low(aInputString) to High(aInputString) do
+      if not fCharReplacementHash.IsCharInSet(aInputString[i]) then
+        lResultBuilder.Add(aInputString[i])
+      else
+      begin
+        lEscapeItem := fCharReplacementHash.FindFirstByChar(aInputString[i]);
+        if lEscapeItem <> nil then
+          lResultBuilder.Add(lEscapeItem.Text)
+        else
+          lResultBuilder.Add(aInputString[i]);        
+      end;      
+  finally
+    lResultBuilder.Done;
+  end;
+end;
+
+function TXMLNode.UnescapeString(const aInputString: string): string;
+var
+  lEscapeText: string;
+  lResultBuilder, lEscapeTextBuilder: TUnicodeStringBuilder;
+  i: Integer;
+  lEscapeItem: TXMLEntityItem; 
+  lCharCode: Integer;
+begin
+  lResultBuilder.Init(Result, Length(aInputString));
+  try
+    i := Low(aInputString);   
+    while i <= High(aInputString) do
+    begin
+      if aInputString[i] = XML_ESCAPE_START_CHAR then
+      begin
+        // Get escape text
+        lEscapeTextBuilder.Init(lEscapeText);
+        try
+          repeat
+            lEscapeTextBuilder.Add(aInputString[i]);
+            Inc(i);
+          until (aInputString[i] = XML_ESCAPE_END_CHAR) or (i >= High(aInputString));
+          lEscapeTextBuilder.Add(aInputString[i]);
+        finally
+          lEscapeTextBuilder.Done;
+        end;
+        // Check escape text for correctness
+        if (Length(lEscapeText) < 2)
+            or (lEscapeText[Length(lEscapeText)] <> XML_ESCAPE_END_CHAR)
+            or (lEscapeText[1] <> XML_ESCAPE_START_CHAR) 
+        then   
+          raise Exception.Create('Wrong escape sequence');
+        // Check escape text for numerical escape
+        if lEscapeText[2] = XML_ESCAPE_CODE_CHAR then
+        begin
+          // Checking if number is hex
+          if (Length(lEscapeText) >= 3) and (lEscapeText[3] = XML_ESCAPE_HEX_CODE_CHAR) then
+            lEscapeText := '$' + Copy(lEscapeText, 4, Length(lEscapeText) - 4)
+          else
+            lEscapeText := Copy(lEscapeText, 3, Length(lEscapeText) - 3);
+          // Try converting number
+          if not TryStrToInt(lEscapeText, lCharCode) then
+            raise Exception.Create('Wrong escape code');
+          lResultBuilder.Add(Char(lCharCode));
+        end
+        else
+        begin
+          // Not numerical, searching Entities hash
+          lEscapeItem := fCharReplacementHash.FindFirstByText(lEscapeText);
+          if lEscapeItem <> nil then
+            lResultBuilder.Add(lEscapeItem.CharValue)
+          else
+            lResultBuilder.Add(lEscapeText);          
+        end;                 
+      end
+      else
+        lResultBuilder.Add(aInputString[i]);
+
+      Inc(i);
+    end;
+  finally
+    lResultBuilder.Done;
+  end;
+end;
+
+procedure TXMLNode.InitReplacementHash;
+var
+  lChildNode: TXMLNode;
+begin
+  if not fCharReplacementHashInitialized then
+  begin
+    fCharReplacementHash := TXMLEntityItems.Create(17);
+    // Adding standard replacements
+    fCharReplacementHash.Add(TXMLEntityItem.Create('&quote;', '"'));
+    fCharReplacementHash.Add(TXMLEntityItem.Create('&amp;', '&'));
+    fCharReplacementHash.Add(TXMLEntityItem.Create('&lt;', '<'));
+    fCharReplacementHash.Add(TXMLEntityItem.Create('&gt;', '>'));
+    fCharReplacementHash.Add(TXMLEntityItem.Create('&apos;', ''''));
+  end;
+  fCharReplacementHash.RecalculateCharSet;
+
+  lChildNode := Self.GetFirstChild;
+  while lChildNode <> nil do
+  begin
+    lChildNode.InitReplacementHash;
+    lChildNode := lChildNode.GetNextSibling;
+  end;  
+  
+  fCharReplacementHashInitialized := True;
+end;
+
 procedure TXMLNode.InitHashChains;
 begin
   fImmediateNodeNameChain.Item := Self;
@@ -809,6 +1011,9 @@ var
   lStreamDataSize: Integer;
   lTempStream: TXMLStream;
 begin
+  // Initialize or recalculate replacement characters
+  InitReplacementHash;
+
   // Check encoding by preamble and header
   aStream.ReadHeaderAndExamineEncoding(aExpectedEncoding);
 
@@ -844,6 +1049,9 @@ procedure TXMLNode.SaveToXMLStream(aStream: TXMLStream; aWriteXMLHeader: Boolean
 var
   lTempStream: TXMLStream;
 begin
+  // Initialize or recalculate replacement characters
+  InitReplacementHash;
+
   aStream.Seek(0, soBeginning);
 
   // We must write all data in unicode first
@@ -986,15 +1194,25 @@ begin
   end;
 end;
 
+function TXMLNode.CreateNodeAsChild(const aNodeName: string = EmptyString; const aNodeTextValue: string = EmptyString): TXMLNode;
+begin
+  Result := nil;
+  try
+    Result := TXMLNode.Create(aNodeName, aNodeTextValue);
+    AddAsChild(Result);
+  except
+    Result.Free;
+    raise;
+  end;
+end;
+
 procedure TXMLNode.AddAsChild(aNode: TXMLNode);
 {$IFNDEF STATIC_CHAINS}
 var
   lCurrentNode: TXMLNode;
 {$ENDIF}
 begin
-  {$IFNDEF STATIC_CHAINS}
-  aNode.AssignGeneralSettings(Self);
-  {$ENDIF}
+  aNode.AssignNodeSettings(Self);
   fImmediateChildren.AddToImmediate(aNode);
   {$IFNDEF STATIC_CHAINS}
   if fHashGeneralChildren then
@@ -1017,9 +1235,7 @@ var
   lCurrentNode: TXMLNode;
 {$ENDIF}
 begin
-  {$IFNDEF STATIC_CHAINS}
-  aNode.AssignGeneralSettings(Self);
-  {$ENDIF}
+  aNode.AssignNodeSettings(Self);
   fImmediateChildren.InsertToImmediate(aNode, aBeforeNode);
   {$IFNDEF STATIC_CHAINS}
   if fHashGeneralChildren then
@@ -1034,18 +1250,6 @@ begin
   // We need to add general properties, starting from itself
   aNode.AddFromNodeGeneralPropertiesToNodeAndParents(aNode);
   {$ENDIF}
-end;
-
-function TXMLNode.CreateNodeAsChild(const aNodeName, aNodeTextValue: string): TXMLNode;
-begin
-  Result := nil;
-  try
-    Result := TXMLNode.Create(aNodeName, aNodeTextValue);
-    AddAsChild(Result);
-  except
-    Result.Free;
-    raise;
-  end;
 end;
 
 procedure TXMLNode.RemoveFromChildren(aNode: TXMLNode);

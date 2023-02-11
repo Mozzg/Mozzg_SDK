@@ -8,7 +8,7 @@ uses
 
 type
   // Custom High resolution timer
-  THighResTimer = class(TObject)
+  THighResolutionTimer = class(TObject)
   strict private
     fTicksPerSecond: Int64;
     fInverseTicksPerMilisecond: Double;
@@ -58,9 +58,9 @@ var
   ulTimePrecisionChanged: Boolean;
   ulWaitableTimerHandle: Winapi.Windows.THandle;
 
-{ THighResTimer }
+{ THighResolutionTimer }
 
-constructor THighResTimer.Create;
+constructor THighResolutionTimer.Create;
 begin
   inherited Create;
   if (not QueryPerformanceFrequency(fTicksPerSecond)) or (not QueryPerformanceCounter(fCurrentTicks)) then
@@ -71,7 +71,7 @@ begin
   fInverseTicksPerNanosecond := 1000000000 / fTicksPerSecond;
 end;
 
-class procedure THighResTimer.InitPrecisionTimer;
+class procedure THighResolutionTimer.InitPrecisionTimer;
 begin
   ulWaitableTimerHandle := CreateWaitableTimer(nil, False, nil);
   if ulWaitableTimerHandle = 0 then
@@ -80,68 +80,68 @@ begin
     if ulTimeDeviceCaps.wPeriodMin <> PRECISION_TIMER_MINIMUM_RESOLUTION then
       if timeBeginPeriod(PRECISION_TIMER_MINIMUM_RESOLUTION) = MMSYSERR_NOERROR then
         ulTimePrecisionChanged := True;
-  THighResTimer.fPrecisionTimerInitialized := True;
+  THighResolutionTimer.fPrecisionTimerInitialized := True;
 end;
 
-procedure THighResTimer.InternalUpdateCurrentTicks;
+procedure THighResolutionTimer.InternalUpdateCurrentTicks;
 begin
   QueryPerformanceCounter(fCurrentTicks);
 end;
 
-function THighResTimer.GetElapsedTicks: Int64;
+function THighResolutionTimer.GetElapsedTicks: Int64;
 begin
   InternalUpdateCurrentTicks;
   Result := fCurrentTicks - fStartTicks;
 end;
 
-function THighResTimer.GetElapsedSeconds: Double;
+function THighResolutionTimer.GetElapsedSeconds: Double;
 begin
   Result := GetElapsedTicks / fTicksPerSecond;
 end;
 
-function THighResTimer.GetElapsedMiliseconds: Int64;
+function THighResolutionTimer.GetElapsedMiliseconds: Int64;
 begin
   Result := Floor(GetElapsedTicks * fInverseTicksPerMilisecond);
 end;
 
-function THighResTimer.GetElapsedMicroseconds: Int64;
+function THighResolutionTimer.GetElapsedMicroseconds: Int64;
 begin
   Result := Floor(GetElapsedTicks * fInverseTicksPerMicrosecond);
 end;
 
-function THighResTimer.GetElapsedNanoseconds: Int64;
+function THighResolutionTimer.GetElapsedNanoseconds: Int64;
 begin
   Result := Floor(GetElapsedTicks * fInverseTicksPerNanosecond);
 end;
 
-function THighResTimer.GetCurrentTicks: Int64;
+function THighResolutionTimer.GetCurrentTicks: Int64;
 begin
   InternalUpdateCurrentTicks;
   Result := fCurrentTicks;
 end;
 
-function THighResTimer.GetCurrentSeconds: Double;
+function THighResolutionTimer.GetCurrentSeconds: Double;
 begin
   Result := GetCurrentTicks / fTicksPerSecond;
 end;
 
-procedure THighResTimer.ResetToSystemStart;
+procedure THighResolutionTimer.ResetToSystemStart;
 begin
   fStartTicks := 0;
 end;
 
-function THighResTimer.Restart: Int64;
+function THighResolutionTimer.Restart: Int64;
 begin
   InternalUpdateCurrentTicks;
   Result := fCurrentTicks - fStartTicks;
   fStartTicks := fCurrentTicks;
 end;
 
-class procedure THighResTimer.SleepPrecise(const a100NanosecIntervalsCount: Int64);
+class procedure THighResolutionTimer.SleepPrecise(const a100NanosecIntervalsCount: Int64);
  var
   lWaitInterval100ns: Int64;
 begin
-  if not THighResTimer.fPrecisionTimerInitialized then
+  if not THighResolutionTimer.fPrecisionTimerInitialized then
     raise Exception.Create(EXCEPTION_MESSAGE_TIMER_NOT_INITIALIZED);
   lWaitInterval100ns := a100NanosecIntervalsCount * -1;
   if SetWaitableTimer(ulWaitableTimerHandle, lWaitInterval100ns, 0, nil, nil, False) then
@@ -154,8 +154,8 @@ initialization
   ulWaitableTimerHandle := 0;
   ulTimePrecisionChanged := False;
   // Initializing precision timer
-  THighResTimer.fPrecisionTimerInitialized := False;
-  THighResTimer.InitPrecisionTimer;
+  THighResolutionTimer.fPrecisionTimerInitialized := False;
+  THighResolutionTimer.InitPrecisionTimer;
 
 finalization
   // Restoring and cleaning
