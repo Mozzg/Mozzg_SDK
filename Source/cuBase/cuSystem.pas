@@ -64,7 +64,7 @@ constructor THighResolutionTimer.Create;
 begin
   inherited Create;
   if (not QueryPerformanceFrequency(fTicksPerSecond)) or (not QueryPerformanceCounter(fCurrentTicks)) then
-    raise Exception.CreateFmt(EXCEPTION_MESSAGE_TIMER_NOT_AVAILABLE, [Self.ClassName]);
+    raise Exception.CreateFmt(EXCEPTION_MESSAGE_TIMER_NOT_AVAILABLE, [ClassName]);
   fStartTicks := fCurrentTicks;
   fInverseTicksPerMilisecond := 1000 / fTicksPerSecond;
   fInverseTicksPerMicrosecond := 1000000 / fTicksPerSecond;
@@ -111,6 +111,7 @@ end;
 
 function THighResolutionTimer.GetElapsedNanoseconds: Int64;
 begin
+  // +++ проверить, что правильно считает, что-то было минусовое значение
   Result := Floor(GetElapsedTicks * fInverseTicksPerNanosecond);
 end;
 

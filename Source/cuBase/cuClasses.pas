@@ -25,10 +25,10 @@ type
   // Forward declaration
   TAbstractList = class;
 
-  ByteArray  = array[0 .. $fffffff] of Byte;
+  ByteArray  = array[0..$fffffff] of Byte;
   PByteArray = ^ByteArray;
 
-  WideCharArray  = array[0 .. $fffffff] of WideChar;
+  WideCharArray  = array[0..$fffffff] of WideChar;
   PWideCharArray = ^WideCharArray;
 
   DWORD = FixedUInt;

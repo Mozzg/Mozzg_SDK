@@ -48,6 +48,9 @@ type
     property NearTextPosition: Integer read fNearTextPosition;
   end;
 
+  ECustomEventThreadException = class(Exception)
+  end;
+
 implementation
 
 { EHashItemException }

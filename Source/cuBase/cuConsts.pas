@@ -30,6 +30,11 @@ const
   EXCEPTION_MESSAGE_XML_UNKNOWN_ENCODING = 'Failed to find encoding codepage for "%s"';
   EXCEPTION_MESSAGE_XML_DIFFERENT_HEADER_BOM_ENCODING = 'Encoding in header (%s) is different from encoding in BOM (%s)';
 
+  EXCEPTION_MESSAGE_THREAD_INVALID_MAX_EVENT_ID = 'Error initializing %s, wrong max event ID (%d)';
+  EXCEPTION_MESSAGE_THREAD_INVALID_EVENT_ID = 'Event ID out of bounds (%d) in %s';
+  EXCEPTION_MESSAGE_THREAD_EVENT_ID_NOT_ASSIGNED = 'Event with ID=%d is not assigned in %s';
+  //EXCEPTION_MESSAGE_THREAD_EVENT_WAIT_EVENTS_EMPTY = 'Error waiting for events in %s. Events array is empty.';
+  EXCEPTION_MESSAGE_THREAD_EVENT_WAIT_ERROR = 'Error waiting for events in %s. Wait failed or abandoned.';
 implementation
 
 end.
